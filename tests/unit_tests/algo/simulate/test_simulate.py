@@ -5,14 +5,15 @@ import numpy as np
 import pandas as pd
 
 from leaspy.algo import AlgorithmSettings, algorithm_factory
-from leaspy.algo.base import AlgorithmType, BaseAlgorithm
+from leaspy.algo.base import AbstractAlgo, AlgorithmType
 from leaspy.algo.simulate import SimulationAlgorithm
+from leaspy.api import Leaspy
 from leaspy.datasets import load_dataset
 from leaspy.exceptions import LeaspyAlgoInputError
 from leaspy.io.data.data import Data
 from leaspy.io.outputs import IndividualParameters
 from leaspy.io.outputs.result import Result
-from leaspy.models import LogisticModel, ModelName, ModelSettings, model_factory
+from leaspy.models import ModelName, ModelSettings, model_factory
 from tests import LeaspyTestCase
 
 
@@ -21,7 +22,7 @@ class SimulateAlgoTest(LeaspyTestCase):
     def setUpClass(cls):
         temp_instance = cls()
 
-        putamen_df = load_dataset("parkinson")
+        putamen_df = load_dataset("parkinson-multivariate")
         data = Data.from_dataframe(
             putamen_df[
                 [
@@ -39,37 +40,19 @@ class SimulateAlgoTest(LeaspyTestCase):
             ]
         )
 
-        cls.model_loaded = LogisticModel(name="test-model", source_dimension=2)
+        cls.model_loaded = Leaspy("logistic", dimension=10, source_dimension=2)
+        fit_settings = AlgorithmSettings("mcmc_saem", seed=0, n_iter=50)
+
         auto_path_logs = temp_instance.get_test_tmp_path("model-logs")
-        cls.model_loaded.fit(
-            data,
-            "mcmc_saem",
+        fit_settings.set_logs(path=auto_path_logs)
+
+        cls.model_loaded.fit(data, fit_settings)
+
+    def test_regular_visits(self):
+        model_loaded = self.model_loaded
+        settings = AlgorithmSettings(
+            "simulation",
             seed=0,
-            n_iter=100,
-            progress_bar=False,
-            path=auto_path_logs,
-            overwrite_logs_folder=True,
-        )
-
-    def test_random_visits(self):
-        model = self.model_loaded
-
-        visit_params = {
-            "patient_number": 5,
-            "visit_type": "random",
-            # 'visit_type': "dataframe",
-            # "df_visits": df_test
-            "first_visit_mean": 0.0,  # OK1
-            "first_visit_std": 0.4,  # OK2
-            "time_follow_up_mean": 11,  # OK
-            "time_follow_up_std": 0.5,  # OK
-            "distance_visit_mean": 2 / 12,  # OK # 1.
-            "distance_visit_std": 0.75 / 12,  # OK # 6
-            "min_spacing_between_visits": 1,
-        }
-
-        df_sim = model.simulate(
-            algorithm="simulate",
             features=[
                 "MDS1_total",
                 "MDS2_total",
@@ -82,9 +65,60 @@ class SimulateAlgoTest(LeaspyTestCase):
                 "CAUDATE_R",
                 "CAUDATE_L",
             ],
-            visit_parameters=visit_params,
+            visit_parameters={
+                "visit_type": "regular",
+                "pat_nb": 5,
+                "regular_visit": 1.0,
+                "fv_mean": 50.0,
+                "fv_std": 2.0,
+                "tf_mean": 10.0,
+                "tf_std": 1.0,
+            },
         )
 
+        algo = algorithm_factory(settings)
+        df_sim = algo.run_impl(model_loaded.model)
+        df_sim = df_sim.data.to_dataframe()
+
+        expected_columns = ["ID", "TIME"] + settings.parameters["features"]
+        assert all(col in df_sim.columns for col in expected_columns)
+        self.assertFalse(df_sim.empty)
+        self.assertEqual(len(df_sim["ID"].unique()), 5)
+
+        for id in df_sim["ID"].unique():
+            times = df_sim[df_sim["ID"] == id]["TIME"].values
+            assert np.allclose(np.diff(times), 1.0, atol=0.1)
+
+    def test_random_visits(self):
+        model_loaded = self.model_loaded
+        settings = AlgorithmSettings(
+            "simulation",
+            seed=0,
+            features=[
+                "MDS1_total",
+                "MDS2_total",
+                "MDS3_off_total",
+                "SCOPA_total",
+                "MOCA_total",
+                "REM_total",
+                "PUTAMEN_R",
+                "PUTAMEN_L",
+                "CAUDATE_R",
+                "CAUDATE_L",
+            ],
+            visit_parameters={
+                "visit_type": "random",
+                "pat_nb": 5,
+                "fv_mean": 50.0,
+                "fv_std": 2.0,
+                "tf_mean": 10.0,
+                "tf_std": 1.0,
+                "distv_mean": 1.0,
+                "distv_std": 0.2,
+            },
+        )
+        algo = algorithm_factory(settings)
+        df_sim = algo.run_impl(model_loaded.model)
         df_sim = df_sim.data.to_dataframe()
 
         self.assertFalse(df_sim.empty)
@@ -95,15 +129,15 @@ class SimulateAlgoTest(LeaspyTestCase):
             times = df_sim.loc[df_sim["ID"] == id, "TIME"].values
             diffs = np.diff(times)
             self.assertTrue((diffs > 0).all())
+            self.assertGreater(np.std(diffs), 0)
 
     def test_dataframe_visits(self):
+        model_loaded = self.model_loaded
         df_input = pd.DataFrame({"ID": ["p1", "p1", "p2"], "TIME": [50.0, 51.0, 52.0]})
 
-        visits_param = {"visit_type": "dataframe", "df_visits": df_input}
-
-        model = self.model_loaded
-        df_sim = model.simulate(
-            algorithm="simulate",
+        settings = AlgorithmSettings(
+            "simulation",
+            seed=0,
             features=[
                 "MDS1_total",
                 "MDS2_total",
@@ -116,9 +150,11 @@ class SimulateAlgoTest(LeaspyTestCase):
                 "CAUDATE_R",
                 "CAUDATE_L",
             ],
-            visit_parameters=visits_param,
+            visit_parameters={"visit_type": "dataframe", "df_visits": df_input},
         )
 
+        algo = algorithm_factory(settings)
+        df_sim = algo.run_impl(model_loaded.model)
         df_sim = df_sim.data.to_dataframe()
 
         # Check all input times are present
@@ -130,5 +166,5 @@ class SimulateAlgoTest(LeaspyTestCase):
             self.assertIn(idx, simulated_indices)
 
         # Check features exist
-        for feature in model.features:
+        for feature in settings.parameters["features"]:
             self.assertIn(feature, df_sim.columns)
