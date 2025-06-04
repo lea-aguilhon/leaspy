@@ -528,6 +528,50 @@ class McmcSaemCompatibleModel(StatefulModel):
             )
         return specifications
 
+    def _initialize_state(self) -> None:
+        """
+        Initialize the internal state of model, as well as the underlying DAG.
+
+        Note that all model hyperparameters (dimension, source_dimension, ...) should be defined
+        in order to be able to do so.
+
+        Returns
+        -------
+        None
+        """
+        if self._state is not None:
+            raise LeaspyModelInputError("Trying to initialize the model's state again")
+        self.state = State(
+            VariablesDAG.from_dict(self.get_variables_specs()),
+            auto_fork_type=StateForkType.REF,
+        )
+        self.state.track_variables(self.tracked_variables)
+
+    def initialize(self, dataset: Optional[Dataset] = None) -> None:
+        """
+        Overloads base model initialization (in particular to handle internal model State).
+
+        <!> We do not put data variables in internal model state at this stage (done in algorithm)
+
+        Parameters
+        ----------
+        dataset : :class:`.Dataset`, optional
+            Input dataset from which to initialize the model.
+        method : InitializationMethod, optional
+            The initialization method to be used.
+            Default='default'.
+        """
+        super().initialize(dataset=dataset)
+        self._initialize_state()
+        if not dataset:
+            return
+        # WIP: design of this may be better somehow?
+        with self._state.auto_fork(None):
+            self._initialize_model_parameters(dataset)
+            self._state.put_population_latent_variables(
+                LatentVariableInitType.PRIOR_MODE
+            )
+
     @abstractmethod
     def put_individual_parameters(self, state: State, dataset: Dataset):
         """Put the individual parameters inside the provided state (in-place).
@@ -603,3 +647,78 @@ class McmcSaemCompatibleModel(StatefulModel):
         state["t"] = None
         for obs_model in self.obs_models:
             state[obs_model.name] = None
+
+    def _initialize_model_parameters(self, dataset: Dataset) -> None:
+        """Initialize model parameters (in-place, in `_state`).
+
+        The method also checks that the model parameters whose initial values
+        were computed from the dataset match the expected model parameters from
+        the specifications (i.e. the nodes of the DAG of type 'ModelParameter').
+
+        If there is a mismatch, the method raises a ValueError because there is
+        an inconsistency between the definition of the model and the way it computes
+        the initial values of its parameters from a dataset.
+
+        Parameters
+        ----------
+        dataset : Dataset
+            The dataset to use to compute initial values for the model parameters.
+        """
+        model_parameters_initialization = (
+            self._compute_initial_values_for_model_parameters(dataset)
+        )
+        model_parameters_spec = self.dag.sorted_variables_by_type[ModelParameter]
+        if set(model_parameters_initialization.keys()) != set(model_parameters_spec):
+            raise ValueError(
+                "Model parameters created at initialization are different "
+                "from the expected model parameters from the specs:\n"
+                f"- From initialization: {sorted(list(model_parameters_initialization.keys()))}\n"
+                f"- From Specs: {sorted(list(model_parameters_spec))}\n"
+            )
+        for (
+            model_parameter_name,
+            model_parameter_variable,
+        ) in model_parameters_spec.items():
+            model_parameter_initial_value = model_parameters_initialization[
+                model_parameter_name
+            ]
+            if not isinstance(
+                model_parameter_initial_value, (torch.Tensor, WeightedTensor)
+            ):
+                try:
+                    model_parameter_initial_value = torch.tensor(
+                        model_parameter_initial_value, dtype=torch.float
+                    )
+                except ValueError:
+                    raise ValueError(
+                        f"The initial value for model parameter '{model_parameter_name}' "
+                        "should be a tensor, or a weighted tensor.\nInstead, "
+                        f"{model_parameter_initial_value} of type {type(model_parameter_initial_value)} "
+                        "was received and cannot be casted to a tensor.\nPlease verify this parameter "
+                        "initialization code."
+                    )
+            self._state[model_parameter_name] = model_parameter_initial_value.expand(
+                model_parameter_variable.shape
+            )
+
+    @abstractmethod
+    def _compute_initial_values_for_model_parameters(
+        self, dataset: Dataset
+    ) -> VariableNameToValueMapping:
+        """Compute initial values for model parameters."""
+        raise NotImplementedError()
+
+    def move_to_device(self, device: torch.device) -> None:
+        """
+        Move a model and its relevant attributes to the specified :class:`torch.device`.
+
+        Parameters
+        ----------
+        device : :class:`torch.device`
+        """
+        if self._state is None:
+            return
+
+        self._state.to_device(device)
+        for hp in self.hyperparameters_names:
+            self._state.dag[hp].to_device(device)

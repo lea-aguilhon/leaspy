@@ -6,8 +6,9 @@ import statsmodels.formula.api as smf
 from statsmodels.regression.mixed_linear_model import MixedLMParams
 
 from leaspy.algo import AlgorithmSettings
+from leaspy.algo.fit import LMEFitAlgorithm
 from leaspy.io.data import Data
-from leaspy.models import BaseModel, LMEModel, model_factory
+from leaspy.models import BaseModel, model_factory
 from tests import LeaspyTestCase
 
 
@@ -54,35 +55,46 @@ class LMEModelAPITest(LeaspyTestCase):
         )
 
         model = model_factory("lme")
+        model = model_factory("lme")
         with self.assertRaises(ValueError):
+            model.fit(bivariate_data, "lme_fit")
             model.fit(bivariate_data, "lme_fit")
 
     def test_run(self):
-        model: LMEModel = model_factory("lme")
+        model = model_factory("lme")
         self.assertIsNone(model.features)
-        self.assertTrue(model.with_random_slope_age)
-        model.with_random_slope_age = False
-        self.assertFalse(model.with_random_slope_age)
+        self.assertEqual(model.with_random_slope_age, True)  # new default
+        model.load_hyperparameters(dict(with_random_slope_age=False))
+        self.assertEqual(model.with_random_slope_age, False)
 
         settings = AlgorithmSettings("lme_fit")
         self.assertDictEqual(settings.parameters, self.default_lme_fit_params)
 
         model.fit(self.data, "lme_fit")
+        model.fit(self.data, "lme_fit")
 
+        self.assertListEqual(model.features, ["Y0"])
+        self.assertEqual(model.with_random_slope_age, False)
+        self.assertEqual(model.dimension, 1)
         self.assertListEqual(model.features, ["Y0"])
         self.assertEqual(model.with_random_slope_age, False)
         self.assertEqual(model.dimension, 1)
 
         self.assertAlmostEqual(self.ages_mean, model.parameters["ages_mean"], places=3)
         self.assertAlmostEqual(self.ages_std, model.parameters["ages_std"], places=3)
+        self.assertAlmostEqual(self.ages_mean, model.parameters["ages_mean"], places=3)
+        self.assertAlmostEqual(self.ages_std, model.parameters["ages_std"], places=3)
 
         # fit that should not work (not multivariate!)
         with self.assertRaises(ValueError):
             model.fit(Data.from_dataframe(self.raw_data_df), "lme_fit")
+            model.fit(Data.from_dataframe(self.raw_data_df), "lme_fit")
 
+        ip = model.personalize(self.data_new_ix, "lme_personalize")
         ip = model.personalize(self.data_new_ix, "lme_personalize")
 
         # check statsmodels consistency
+        self.check_consistency_sm(model.parameters, ip, re_formula="~1")
         self.check_consistency_sm(model.parameters, ip, re_formula="~1")
 
         # Personalize that shouldn't work (different feature)
@@ -90,10 +102,14 @@ class LMEModelAPITest(LeaspyTestCase):
             model.personalize(
                 Data.from_dataframe(self.raw_data_df[["ID", "TIME", "Y1"]]),
                 "lme_personalize",
+            model.personalize(
+                Data.from_dataframe(self.raw_data_df[["ID", "TIME", "Y1"]]),
+                "lme_personalize",
             )
 
         # # Estimate
         timepoints = {"709_new": [80]}
+        results = model.estimate(timepoints, ip)
         results = model.estimate(timepoints, ip)
         self.assertEqual(results.keys(), timepoints.keys())
         self.assertEqual(results["709_new"].shape, (1, 1))
@@ -128,11 +144,16 @@ class LMEModelAPITest(LeaspyTestCase):
         model = model_factory("lme", with_random_slope_age=False)
         model.fit(easy_data, "lme_fit")
 
+        model = model_factory("lme", with_random_slope_age=False)
+        model.fit(easy_data, "lme_fit")
+
         unseen_easy_data = Data.from_dataframe(unseen_df)
+        ip = model.personalize(unseen_easy_data, "lme_personalize")
         ip = model.personalize(unseen_easy_data, "lme_personalize")
 
         # # Estimate
         easy_timepoints = {"pat4": [15, 16]}
+        easy_results = model.estimate(easy_timepoints, ip)
         easy_results = model.estimate(easy_timepoints, ip)
         self.assertEqual(easy_results.keys(), easy_timepoints.keys())
         self.assertEqual(easy_results["pat4"].shape, (2, 1))
@@ -172,16 +193,23 @@ class LMEModelAPITest(LeaspyTestCase):
     def test_with_random_slope_age(self):
         model = model_factory("lme")
         self.assertTrue(model.with_random_slope_age)
+        model = model_factory("lme")
+        self.assertTrue(model.with_random_slope_age)
         settings = AlgorithmSettings("lme_fit")
         self.assertDictEqual(settings.parameters, self.default_lme_fit_params)
 
         model.fit(self.data, "lme_fit")
+        model.fit(self.data, "lme_fit")
 
+        self.assertListEqual(model.features, ["Y0"])
+        self.assertEqual(model.dimension, 1)
         self.assertListEqual(model.features, ["Y0"])
         self.assertEqual(model.dimension, 1)
 
         self.assertEqual(model.with_random_slope_age, True)
+        self.assertEqual(model.with_random_slope_age, True)
         self.assertGreater(
+            np.abs(model.parameters["cov_re"][0, 1]), 0
             np.abs(model.parameters["cov_re"][0, 1]), 0
         )  # not forced independent
 
@@ -189,15 +217,20 @@ class LMEModelAPITest(LeaspyTestCase):
         model_path = self.get_test_tmp_path("lme_model_1.json")
         model.save(model_path)
         del model
+        model.save(model_path)
+        del model
 
+        model = BaseModel.load(model_path)
         model = BaseModel.load(model_path)
         os.unlink(model_path)
 
         # Personalize
         settings = AlgorithmSettings("lme_personalize")
         ip = model.personalize(self.data_new_ix, "lme_personalize")
+        ip = model.personalize(self.data_new_ix, "lme_personalize")
 
         # check statsmodels consistency
+        self.check_consistency_sm(model.parameters, ip, re_formula="~1+TIME_norm")
         self.check_consistency_sm(model.parameters, ip, re_formula="~1+TIME_norm")
 
     def test_with_random_slope_age_indep(self):
@@ -213,13 +246,56 @@ class LMEModelAPITest(LeaspyTestCase):
         )
         model = model_factory("lme", with_random_slope_age=True)
         model.fit(self.data, "lme_fit", force_independent_random_effects=True)
+        model = model_factory("lme", with_random_slope_age=True)
+        model.fit(self.data, "lme_fit", force_independent_random_effects=True)
 
+        self.assertEqual(model.with_random_slope_age, True)
+        self.assertAlmostEqual(model.parameters["cov_re"][0, 1], 0, places=5)
         self.assertEqual(model.with_random_slope_age, True)
         self.assertAlmostEqual(model.parameters["cov_re"][0, 1], 0, places=5)
 
         ip = model.personalize(self.data_new_ix, "lme_personalize")
+        ip = model.personalize(self.data_new_ix, "lme_personalize")
         free = MixedLMParams.from_components(fe_params=np.ones(2), cov_re=np.eye(2))
+
 
         self.check_consistency_sm(
             model.parameters, ip, re_formula="~1+TIME_norm", free=free
+            model.parameters, ip, re_formula="~1+TIME_norm", free=free
         )
+
+    def test_deprecated_hyperparameter_in_algo(self):
+        # Test deprecation behavior (test to be removed with this old behavior will be removed)
+
+        ## 1: Overwrite LME hyperparameter from LME fit algo
+        settings = AlgorithmSettings("lme_fit", with_random_slope_age=False)
+        algo = LMEFitAlgorithm(settings)
+        self.assertEqual(
+            algo._model_hyperparams_to_set, {"with_random_slope_age": False}
+        )
+
+        model = model_factory("lme")
+        self.assertTrue(model.with_random_slope_age)
+        with self.assertWarns(FutureWarning):
+            model.fit(self.data, "lme_fit", with_random_slope_age=False)
+
+        self.assertFalse(model.with_random_slope_age)
+
+        ## 2: No warning if hyperparameter set to None (--> default)
+        settings = AlgorithmSettings("lme_fit", with_random_slope_age=None)
+        algo = LMEFitAlgorithm(settings)
+        self.assertEqual(
+            algo._model_hyperparams_to_set, {"with_random_slope_age": None}
+        )
+
+        settings = AlgorithmSettings("lme_fit")
+        algo = LMEFitAlgorithm(settings)
+        self.assertEqual(
+            algo._model_hyperparams_to_set, {"with_random_slope_age": None}
+        )
+
+        # no effect on model hyperparameter
+        model = model_factory("lme", with_random_slope_age=False)
+        self.assertFalse(model.with_random_slope_age)
+        model.fit(self.data, "lme_fit")
+        self.assertFalse(model.with_random_slope_age)
