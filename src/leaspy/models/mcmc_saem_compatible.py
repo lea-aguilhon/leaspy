@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import warnings
 from abc import abstractmethod
 from typing import Iterable, Optional, Union
 
@@ -18,8 +21,8 @@ from leaspy.variables.specs import (
 )
 from leaspy.variables.state import State
 
+from .base import BaseModel
 from .obs_models import ObservationModel
-from .stateful import StatefulModel
 
 __all__ = ["McmcSaemCompatibleModel"]
 
@@ -111,6 +114,8 @@ class McmcSaemCompatibleModel(StatefulModel):
 
     def to_dict(self, **kwargs) -> KwargsType:
         """Export model as a dictionary ready for export.
+    def to_dict(self, **kwargs) -> KwargsType:
+        """Export model as a dictionary ready for export.
 
         Returns
         -------
@@ -128,6 +133,80 @@ class McmcSaemCompatibleModel(StatefulModel):
             }
         )
         return d
+
+    def load_parameters(self, parameters: KwargsType) -> None:
+        """Instantiate or update the model's parameters.
+
+        It assumes that all model hyperparameters are defined.
+
+        Parameters
+        ----------
+        parameters : :obj:`dict` [ :obj:`str`, Any ]
+            Contains the model's parameters.
+        """
+        if self._state is None:
+            self._initialize_state()
+
+        # TODO: a bit dirty due to hyperparams / params mix (cf. `.parameters` property note)
+
+        params_names = self.parameters_names
+        missing_params = set(params_names).difference(parameters)
+        if len(missing_params):
+            warnings.warn(f"Missing some model parameters: {missing_params}")
+        extra_vars = set(parameters).difference(self.dag)
+        if len(extra_vars):
+            raise LeaspyModelInputError(f"Unknown model variables: {extra_vars}")
+        # TODO: check no DataVariable provided???
+        # extra_params = set(parameters).difference(cur_params)
+        # if len(extra_params):
+        #    # e.g. mixing matrix, which is a derived variable - checking their values only
+        #    warnings.warn(f"Ignoring some provided values that are not model parameters: {extra_params}")
+
+        def val_to_tensor(val, shape: Optional[tuple] = None):
+            if not isinstance(val, (torch.Tensor, WeightedTensor)):
+                val = torch.tensor(val)
+            if shape is not None:
+                val = val.view(shape)  # no expansion here
+            return val
+
+        # update parameters first (to be able to check values of derived variables afterwards)
+        provided_params = {
+            p: val_to_tensor(parameters[p], self.dag[p].shape)
+            for p in params_names
+            if p in parameters
+        }
+        for p, val in provided_params.items():
+            # TODO: WeightedTensor? (e.g. batched `deltas`)
+            self._state[p] = val
+
+        # derive the population latent variables from model parameters
+        # e.g. to check value of `mixing_matrix` we need `v0` and `betas` (not just `log_v0` and `betas_mean`)
+        self._state.put_population_latent_variables(LatentVariableInitType.PRIOR_MODE)
+
+        # check equality of other values (hyperparameters or linked variables)
+        for parameter_name, parameter_value in parameters.items():
+            if parameter_name in provided_params:
+                continue
+            # TODO: a bit dirty due to hyperparams / params mix (cf. `.parameters` property note)
+            try:
+                current_value = self._state[parameter_name]
+            except Exception as e:
+                raise LeaspyModelInputError(
+                    f"Impossible to compare value of provided value for {parameter_name} "
+                    "- not computable given current state"
+                ) from e
+            parameter_value = val_to_tensor(
+                parameter_value, getattr(self.dag[parameter_name], "shape", None)
+            )
+            assert (
+                parameter_value.shape == current_value.shape,
+                (parameter_name, parameter_value.shape, current_value.shape),
+            )
+            # TODO: WeightedTensor? (e.g. batched `deltas``)
+            assert (
+                torch.allclose(parameter_value, current_value, atol=1e-4),
+                (parameter_name, parameter_value, current_value),
+            )
 
     @abstractmethod
     def _load_hyperparameters(self, hyperparameters: KwargsType) -> None:
@@ -279,6 +358,7 @@ class McmcSaemCompatibleModel(StatefulModel):
 
     def compute_individual_trajectory(
         self,
+        timepoints: list[float],
         timepoints: list[float],
         individual_parameters: DictParams,
         *,

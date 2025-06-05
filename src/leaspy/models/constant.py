@@ -2,12 +2,16 @@ import torch
 
 from leaspy.exceptions import LeaspyModelInputError
 from leaspy.utils.typing import DictParamsTorch
+from leaspy.utils.typing import DictParamsTorch
 
+from .stateless import StatelessModel
 from .stateless import StatelessModel
 
 __all__ = ["ConstantModel"]
 
 
+class ConstantModel(StatelessModel):
+    r"""ConstantModel` is a benchmark model that predicts constant values (no matter what the patient's ages are).
 class ConstantModel(StatelessModel):
     r"""ConstantModel` is a benchmark model that predicts constant values (no matter what the patient's ages are).
 
@@ -40,7 +44,7 @@ class ConstantModel(StatelessModel):
 
     def __init__(self, name: str, **kwargs):
         super().__init__(name, **kwargs)
-        self._is_initialized = True
+        self.is_initialized = True
 
     @property
     def hyperparameters(self) -> DictParamsTorch:

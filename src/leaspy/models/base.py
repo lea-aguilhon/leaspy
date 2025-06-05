@@ -6,12 +6,13 @@ from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
+import torch
 
 from leaspy.algo import AlgorithmName, AlgorithmSettings
 from leaspy.exceptions import LeaspyModelInputError
 from leaspy.io.data.dataset import Data, Dataset
 from leaspy.io.outputs import IndividualParameters
-from leaspy.utils.typing import DictParamsTorch, FeatureType, IDType
+from leaspy.utils.typing import DictParamsTorch, FeatureType, IDType, KwargsType
 
 __all__ = [
     "InitializationMethod",
@@ -137,8 +138,8 @@ class BaseModel(ModelInterface):
     def __init__(self, name: str, **kwargs):
         self.is_initialized: bool = False
         self.name = name
-        self._features: Optional[list[FeatureType]] = None
-        self._dimension: Optional[int] = None
+        self._features: Optional[list[FeatureType]] = kwargs.pop("features", None)
+        self._dimension: Optional[int] = kwargs.pop("dimension", None)
         self.initialization_method: InitializationMethod = InitializationMethod.DEFAULT
         if "initialization_method" in kwargs:
             self.initialization_method = InitializationMethod(
@@ -197,6 +198,12 @@ class BaseModel(ModelInterface):
     @abstractmethod
     def parameters(self) -> DictParamsTorch:
         """Dictionary of values for model parameters."""
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def hyperparameters(self) -> DictParamsTorch:
+        """Dictionary of values for model hyperparameters."""
         raise NotImplementedError
 
     def _validate_compatibility_of_dataset(
@@ -437,9 +444,8 @@ class BaseModel(ModelInterface):
 
         return estimations
 
-    @abstractmethod
     def save(self, path: Union[str, Path], **kwargs) -> None:
-        """Save the model at the given path.
+        """Save model as json model parameter file.
 
         Parameters
         ----------
@@ -449,7 +455,41 @@ class BaseModel(ModelInterface):
         **kwargs
             Additional parameters for writing.
         """
-        raise NotImplementedError
+        import json
+        from inspect import signature
+
+        export_kws = {
+            k: kwargs.pop(k) for k in signature(self.to_dict).parameters if k in kwargs
+        }
+        model_settings = self.to_dict(**export_kws)
+        kwargs = {"indent": 2, **kwargs}
+        with open(path, "w") as fp:
+            json.dump(model_settings, fp, **kwargs)
+
+    def to_dict(self, **kwargs) -> KwargsType:
+        """Export model as a dictionary ready for export.
+
+        Returns
+        -------
+        KwargsType :
+            The model instance serialized as a dictionary.
+        """
+        from leaspy import __version__
+
+        from .utilities import tensor_to_list
+
+        return {
+            "leaspy_version": __version__,
+            "name": self.name,
+            "features": self.features,
+            "dimension": self.dimension,
+            "hyperparameters": {
+                k: tensor_to_list(v) for k, v in (self.hyperparameters or {}).items()
+            },
+            "parameters": {
+                k: tensor_to_list(v) for k, v in (self.parameters or {}).items()
+            },
+        }
 
     @classmethod
     def load(cls, path_to_model_settings: Union[str, Path]):
@@ -461,6 +501,10 @@ class BaseModel(ModelInterface):
         instance.load_parameters(reader.parameters)
         instance.is_initialized = True
         return instance
+
+    @abstractmethod
+    def load_parameters(self, parameters: KwargsType) -> None:
+        raise NotImplementedError
 
     def fit(
         self,
@@ -720,6 +764,14 @@ class BaseModel(ModelInterface):
 
         return estimations
 
+    @abstractmethod
+    def compute_individual_trajectory(
+        self,
+        timepoints: list[float],
+        individual_parameters: IndividualParameters,
+    ) -> torch.Tensor:
+        raise NotImplementedError
+
     def simulate(
         self,
         individual_parameters: IndividualParameters,
@@ -727,3 +779,18 @@ class BaseModel(ModelInterface):
         **kwargs,
     ):
         raise NotImplementedError("Simulation not implemented.")
+
+    def __str__(self) -> str:
+        from .utilities import serialize_tensor
+
+        output = f"=== {self.__class__.__name__} {self.name} ==="
+        output += f"\ndimension : {self.dimension}\nfeatures : {self.features}"
+        output += serialize_tensor(self.parameters)
+
+        # TODO/WIP obs models...
+        # nm_props = export_noise_model(self.noise_model)
+        # nm_name = nm_props.pop('name')
+        # output += f"\nnoise-model : {nm_name}"
+        # output += self._serialize_tensor(nm_props, indent="  ")
+
+        return output
