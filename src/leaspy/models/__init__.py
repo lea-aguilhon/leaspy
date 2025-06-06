@@ -1,4 +1,4 @@
-from .base import BaseModel
+from .base import BaseModel, ModelInterface
 from .constant import ConstantModel
 from .factory import ModelName, model_factory
 from .joint import JointModel
