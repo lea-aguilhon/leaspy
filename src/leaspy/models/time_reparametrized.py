@@ -302,31 +302,6 @@ class TimeReparametrizedModel(McmcSaemCompatibleModel):
     def _audit_individual_parameters(
         self, individual_parameters: DictParams
     ) -> KwargsType:
-        """
-        Validate and process individual parameter inputs for model compatibility.
-
-        Parameters
-        ----------
-        individual_parameters : DictParams
-            A dictionary mapping parameter names (strings) to their values,
-            which can be scalars or array-like structures.
-
-        Returns
-        -------
-        KwargsType
-            A dictionary with the following keys:
-            - "nb_inds": Number of individuals
-            - "tensorized_ips": Dictionary of parameters converted to 2D tensors.
-            - "tensorized_ips_gen": Generator yielding tensors for each individual,
-            each with an added batch dimension.
-
-        Raises
-        ------
-        LeaspyIndividualParamsInputError
-            If the provided dictionary keys do not match the expected parameter names,
-            or if the sizes of individual parameters are inconsistent,
-            or if `sources` parameter does not meet array-like requirements.
-        """
         from .utilities import is_array_like, tensorize_2D
 
         expected_parameters = set(["xi", "tau"] + int(self.has_sources) * ["sources"])
@@ -370,6 +345,7 @@ class TimeReparametrizedModel(McmcSaemCompatibleModel):
         unsqueeze_dim = 0 if n_individual_parameters == 1 else -1
         # tensorized (2D) version of ips
         tensorized_individual_parameters = {
+            name: tensorize_2D(value, unsqueeze_dim=unsqueeze_dim)
             name: tensorize_2D(value, unsqueeze_dim=unsqueeze_dim)
             for name, value in individual_parameters.items()
         }
