@@ -6,9 +6,9 @@ from leaspy.io.data import Dataset
 from leaspy.io.data.data import Data
 from leaspy.io.outputs import IndividualParameters
 from leaspy.io.outputs.result import Result
-from leaspy.models import McmcSaemCompatibleModel
+from leaspy.models import McmcSaemCompatibleModel, ModelType
 
-from ..base import AlgorithmType, IterativeAlgorithm, ModelType, ReturnType
+from ..base import AlgorithmType, IterativeAlgorithm, ReturnType
 from ..settings import OutputsSettings
 
 __all__ = ["SimulateAlgorithm"]
@@ -53,7 +53,7 @@ class BaseSimulationAlgorithm(IterativeAlgorithm[ModelType, ReturnType]):
             - `noise_std`: Noise standard deviation used in the simulation.
         """
 
-        # Simulate Individual Parameters Repeated Measures
+        # Simulate RE for RM
         individual_parameters_from_model_parameters = (
             self._sample_individual_parameters_from_model_parameters(model)
         )
