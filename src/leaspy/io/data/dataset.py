@@ -108,6 +108,9 @@ class Dataset:
         # Covariate information
         self.covariate_names: Optional[list[str]] = data.covariate_names
         self.covariates: Optional[torch.IntTensor] = None
+        # Covariate information
+        self.covariate_names: Optional[list[str]] = data.covariate_names
+        self.covariates: Optional[torch.IntTensor] = None
 
         # internally used by ordinal models only (cache)
         self._one_hot_encoding: Optional[dict[bool, torch.LongTensor]] = None
@@ -122,6 +125,9 @@ class Dataset:
 
         if self.event_time_name:
             self._construct_events(data)
+
+        if self.covariate_names:
+            self._construct_covariates(data)
 
         if self.covariate_names:
             self._construct_covariates(data)
@@ -204,14 +210,6 @@ class Dataset:
         )
 
     def _construct_covariates(self, data: Data):
-        """
-        Construct the covariates tensor from the data.
-
-        Parameters
-        ----------
-        data : :class:`~leaspy.io.data.Data`
-            The data from which to construct the covariates tensor.
-        """
         self.covariates = torch.tensor(
             np.array([_.covariates for _ in data]), dtype=torch.int
         )
@@ -266,18 +264,13 @@ class Dataset:
 
         Parameters
         ----------
-        idx_patient : :obj:`int`
+        idx_patient : int
             The index of the patient (<!> not its identifier)
 
         Returns
         -------
-        :obj:`torch.Tensor`, shape (n_obs_of_patient,)
+        :class:`torch.Tensor`, shape (n_obs_of_patient,)
             Contains float
-
-        Raises
-        ------
-        :exc:`.ValueError`
-            If the dataset has no covariates.
         """
         if self.covariates is not None:
             return self.covariates[idx_patient]
@@ -330,6 +323,7 @@ class Dataset:
         return values_with_nans
 
     def to_pandas(self, apply_headers: bool = False) -> pd.DataFrame:
+    def to_pandas(self, apply_headers: bool = False) -> pd.DataFrame:
         """
         Convert dataset to a `DataFrame` with ['ID', 'TIME'] index, with all covariates, events and repeated measures if
         apply_headers is False, and only the repeated measures otherwise.
@@ -365,6 +359,10 @@ class Dataset:
                 pat_covariates = self.get_covariates_patient(i)
                 ind_pat.add_covariates(pat_covariates.cpu().tolist())
 
+            if self.covariates is not None:
+                pat_covariates = self.get_covariates_patient(i)
+                ind_pat.add_covariates(pat_covariates.cpu().tolist())
+
             if self.values is not None:
                 times = self.get_times_patient(i).cpu().numpy()
                 x = self.get_values_patient(i).cpu().numpy()
@@ -372,6 +370,10 @@ class Dataset:
 
             to_concat.append(
                 ind_pat.to_frame(
+                    self.headers,
+                    self.event_time_name,
+                    self.event_bool_name,
+                    self.covariate_names,
                     self.headers,
                     self.event_time_name,
                     self.event_bool_name,
