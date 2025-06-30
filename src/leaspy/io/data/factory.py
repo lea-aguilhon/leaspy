@@ -28,6 +28,27 @@ class DataframeDataReaderNames(Enum):
 
     @classmethod
     def from_string(cls, reader_name: str):
+        """
+        Convert a string to a DataframeDataReaderNames enum.
+
+        Parameters
+        ----------
+        cls : :class:`~leaspy.io.data.factory.DataframeDataReaderNames`
+            The class itself, used for creating an instance of the enum.
+
+        reader_name : :obj:`str`
+            The name of the reader, e.g., "event", "visit", "joint", or "covariate".
+
+        Returns
+        -------
+        :class:`~leaspy.io.data.factory.DataframeDataReaderNames`
+            The corresponding enum value.
+
+        Raises
+        ------
+        :exc:`NotImplementedError`
+            If the provided string does not match any of the enum values.
+        """
         try:
             return cls(reader_name.lower())
         except ValueError:
@@ -57,10 +78,10 @@ def dataframe_data_reader_factory(
 
     Parameters
     ----------
-    model : :obj:`str` or :class:`.ObservationModel` or :obj:`dict` [ :obj:`str`, ...]
-        - If an instance of a subclass of :class:`.ObservationModel`, returns the instance.
-        - If a string, then returns a new instance of the appropriate class (with optional parameters `kws`).
-        - If a dictionary, it must contain the 'name' key and other initialization parameters.
+    model : :obj:`str` or :class:`.ObservationModel` or :obj:`dict` [ :obj:`str`, ]
+        * If an instance of a subclass of :class:`.ObservationModel`, returns the instance.
+        * If a string, then returns a new instance of the appropriate class (with optional parameters `kws`).
+        * If a dictionary, it must contain the 'name' key and other initialization parameters.
     **kwargs
         Optional parameters for initializing the requested observation model when a string.
 
