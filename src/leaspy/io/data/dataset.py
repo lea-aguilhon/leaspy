@@ -30,7 +30,7 @@ class Dataset:
 
     Attributes
     ----------
-    headers : obj:`list` [:obj:`str`]
+    headers : :obj:`list` [:obj:`str`]
         Features names
     dimension : :obj:`int`
         Number of features
@@ -38,9 +38,9 @@ class Dataset:
         Number of individuals
     indices : :obj:`list`
         Order of patients
-    event_time : :obj:`torch.FloatTensor`
+    event_time : :class:`torch.FloatTensor`
         Time of an event, if the event is censored, the time correspond to the last patient observation
-    event_bool : :obj:`torch.BoolTensor`
+    event_bool : :class:`torch.BoolTensor`
         Boolean to indicate if an event is censored or not: 1 observed, 0 censored
     n_visits_per_individual : :obj:`list` [:obj:`int`]
         Number of visits per individual
@@ -48,30 +48,30 @@ class Dataset:
         Maximum number of visits for one individual
     n_visits : :obj:`int`
         Total number of visits
-    n_observations_per_ind_per_ft : :obj:`torch.LongTensor`, shape (n_individuals, dimension)
+    n_observations_per_ind_per_ft : :class:`torch.LongTensor`, shape (n_individuals, dimension)
         Number of observations (not taking into account missing values) per individual per feature
-    n_observations_per_ft : :obj:`torch.LongTensor`, shape (dimension,)
+    n_observations_per_ft : :class:`torch.LongTensor`, shape (dimension,)
         Total number of observations per feature
     n_observations : :obj:`int`
         Total number of observations
-    timepoints : :obj:`torch.FloatTensor`, shape (n_individuals, n_visits_max)
+    timepoints : :class:`torch.FloatTensor`, shape (n_individuals, n_visits_max)
         Ages of patients at their different visits
-    values : :obj:`torch.FloatTensor`, shape (n_individuals, n_visits_max, dimension)
+    values : :class:`torch.FloatTensor`, shape (n_individuals, n_visits_max, dimension)
         Values of patients for each visit for each feature
-    mask : :obj:`torch.FloatTensor`, shape (n_individuals, n_visits_max, dimension)
+    mask : :class:`torch.FloatTensor`, shape (n_individuals, n_visits_max, dimension)
         Binary mask associated to values.
         If 1: value is meaningful
         If 0: value is meaningless (either was nan or does not correspond to a real visit - only here for padding)
-    L2_norm_per_ft : :obj:`torch.FloatTensor`, shape (dimension,)
+    L2_norm_per_ft : :class:`torch.FloatTensor`, shape (dimension,)
         Sum of all non-nan squared values, feature per feature
-    L2_norm : :obj:`torch.FloatTensor`
+    L2_norm : :class:`torch.FloatTensor`
         Sum of all non-nan squared values
     no_warning : :obj:`bool` (default False)
         Whether to deactivate warnings that are emitted by methods of this dataset instance.
         We may want to deactivate them because we rebuild a dataset per individual in scipy minimize.
         Indeed, all relevant warnings certainly occurred for the overall dataset.
 
-    _one_hot_encoding : :obj:`dict` [:obj:`bool`, :obj:`torch.LongTensor`]
+    _one_hot_encoding : :obj:`dict` [:obj:`bool`, :class:`torch.LongTensor`]
         Values of patients for each visit for each feature, but tensorized into a one-hot encoding (pdf or sf)
         Shapes of tensors are (n_individuals, n_visits_max, dimension, max_ordinal_level [-1 when `sf=True`])
 
@@ -236,7 +236,7 @@ class Dataset:
 
         Returns
         -------
-        :obj:`torch.FloatTensor`
+        :class:`torch.FloatTensor`
             Tensor of shape number observations of patients
             Contains float
         """
@@ -253,7 +253,7 @@ class Dataset:
 
         Returns
         -------
-        :obj:`tuple` [:obj:`torch.Tensor`, :obj:`torch.Tensor`]
+        :obj:`tuple` [:class:`torch.Tensor`, :class:`torch.Tensor`]
             Tensor of shape number observations of patients
             Contains float
         """
@@ -272,7 +272,7 @@ class Dataset:
 
         Returns
         -------
-        :obj:`torch.IntTensor`
+        :class:`torch.IntTensor`
             Tensor of shape number observations of patients
             Contains float
         """
@@ -286,7 +286,7 @@ class Dataset:
 
         Parameters
         ----------
-        i: :obj:`int`
+        i : :obj:`int`
             The index of the patient (<!> not its identifier)
         adapt_for_model : None (default) or :class:`~leaspy.utils.mcmc_saem_compatible`
             The values returned are suited for this model.
@@ -297,7 +297,7 @@ class Dataset:
 
         Returns
         -------
-        :obj:`torch.FloatTensor`
+        :class:`torch.FloatTensor`
             shape (n_obs_of_patient, dimension [, extra_dimension_for_ordinal_models])
             Contains float or nans
         """
@@ -385,7 +385,7 @@ class Dataset:
 
         Parameters
         ----------
-        device : :obj:`torch.device`
+        device : :class:`torch.device`
         """
         for attribute_name in dir(self):
             if attribute_name.startswith("__"):
@@ -410,7 +410,7 @@ class Dataset:
 
         Parameters
         ----------
-        sf: :obj:`bool`
+        sf : :obj:`bool`
             Whether the vector should be the survival function [1(X > l), l=0..max_level-1]
             instead of the probability density function [1(X=l), l=0..max_level]
 
@@ -419,7 +419,7 @@ class Dataset:
 
         Returns
         -------
-        :obj:`torch.LongTensor` or :obj:`torch.FloatTensor`
+        :class:`torch.LongTensor` or :class:`torch.FloatTensor`
             One-hot encoding of data values.
 
         Raises
